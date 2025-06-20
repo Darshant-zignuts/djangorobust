@@ -8,6 +8,13 @@ from .serializers import UserSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.core.cache import cache
 import random
+from datetime import timedelta
+from django.utils import timezone
+from .models import *
+
+
+MAX_OTP_ATTEMPTS = 3
+OTP_ATTEMPT_WINDOW = 3600  # 1 hour
 
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
@@ -90,9 +97,45 @@ def generate_token_response(self, user, message):
 def generate_otp():
     return str(random.randint(100000, 999999))
 
+def save_otp_to_db(email, otp):
+    PasswordResetOTP.objects.update_or_create(
+        email=email,
+        defaults={"otp": otp, "created_at": timezone.now()}
+    )
+
+
 def save_otp_to_cache(email, otp):
     cache.set(f"otp_{email}", otp, timeout=600)  # 10 mins
 
-def verify_otp_from_cache(email, otp):
-    cached_otp = cache.get(f"otp_{email}")
-    return cached_otp == otp
+def verify_otp_from_db(email, otp):
+    try:
+        record = PasswordResetOTP.objects.get(email=email)
+        return record.otp == otp and not record.is_expired()
+    except PasswordResetOTP.DoesNotExist:
+        return False
+
+
+def has_exceeded_otp_limit(email):
+    try:
+        attempt = OTPAttempt.objects.get(email=email)
+    except OTPAttempt.DoesNotExist:
+        return False  # No attempts yet
+
+    time_threshold = timezone.now() - timedelta(seconds=OTP_ATTEMPT_WINDOW)
+
+    # Check if within the cooldown window AND attempts exceed max allowed
+    if attempt.timestamp >= time_threshold and attempt.attempts >= MAX_OTP_ATTEMPTS:
+        return True
+
+    # If outside window, reset attempts count
+    if attempt.timestamp < time_threshold:
+        attempt.attempts = 0
+        attempt.save()
+
+    return False
+
+def record_otp_attempt(email):
+    obj, created = OTPAttempt.objects.get_or_create(email=email)
+    if not created:
+        obj.attempts += 1
+    obj.save()  

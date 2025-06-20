@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 class User(models.Model):
     full_name = models.CharField(max_length=255)
@@ -23,3 +24,32 @@ class User(models.Model):
 
     def __str__(self):
         return self.email
+
+class LoginSession(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    access_token = models.TextField()
+    refresh_token = models.TextField()
+    login_time = models.DateTimeField(auto_now_add=True)
+    logout_time = models.DateTimeField(null=True, blank=True)
+    email = models.EmailField(unique=True)
+
+    def __str__(self):
+        return f"{self.user.email} - {self.login_time}"
+
+class OTPAttempt(models.Model):
+    email = models.EmailField(unique=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    attempts = models.IntegerField(default=1)
+
+    def __str__(self):
+        return f"{self.email} - {self.attempts} attempts at {self.timestamp}"
+class PasswordResetOTP(models.Model):
+    email = models.EmailField(unique=True)
+    otp = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def is_expired(self):
+        return timezone.now() > self.created_at + timezone.timedelta(minutes=10)  # expires in 10 mins
+
+    def __str__(self):
+        return f"{self.email} - {self.otp}"
