@@ -298,7 +298,7 @@ class SignupLoginAPIView(APIView):
 
 
 class LogoutAPIView(APIView):
-    authentication_classes = []  # ✅ disables global auth check
+    authentication_classes = []  # disables global auth check
     permission_classes = [AllowAny]
     def post(self, request):
         print("Logout request received")
